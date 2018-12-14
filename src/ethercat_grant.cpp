@@ -4,6 +4,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -18,12 +19,42 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
+  // parse options
+  unsigned int args_offset = 1;
+  if (argc > 1) {
+    if (argv[1][0] == '-') {
+      if (argv[1][1] == 'e') 
+      {
+        if (argc > 3)
+        {
+          // add the passed argument to the environment
+          if (putenv(argv[2])!=0)
+          {
+            perror("invalid env");
+            return -1;
+          }
+          args_offset = 3;
+        }
+        else
+        {
+          printf("  error: option -e requires an argument in form <VAR>=<string>\n");
+          return -1;
+        }
+      }
+      if (argv[1][1] == 'h') 
+      {
+        printf("syntax: ethercat_grant [-e <VAR>=<string> | -h] <application> [args]\n\n -e is an option to pass a single environment variable added to environment of the executable\n");
+        return 0;
+      }
+    }
+  }
+
   // Remove old executable, if it exists
   unlink(EXECUTABLE);
 
   // Copy new executable to /var/tmp
   string cmd;
-  cmd = string("/bin/cp ") + string(argv[1]) + string(" " EXECUTABLE);
+  cmd = string("/bin/cp ") + string(argv[args_offset]) + string(" " EXECUTABLE);
   if (system(cmd.c_str()) == -1) {
     perror("cp");
     return -1;
@@ -44,7 +75,7 @@ int main(int argc, char *argv[])
   // Set file capability
   int retval = cap_set_file(EXECUTABLE, cap_d);
   if (retval != 0) {
-    fprintf(stderr, "Failed to set capabilities on file `%s' (%s)\n", argv[1], strerror(errno));
+    fprintf(stderr, "Failed to set capabilities on file `%s' (%s)\n", argv[args_offset], strerror(errno));
     return -1;
   }
 
@@ -52,7 +83,6 @@ int main(int argc, char *argv[])
   if (cap_d) {
     cap_free(cap_d);
   }
-
 
   // Drop privileges
   retval = setuid(getuid());
@@ -62,8 +92,8 @@ int main(int argc, char *argv[])
   prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
 
   // Exec executable
-  if (execv(EXECUTABLE, argv + 1) < 0) {
-    perror("execv");
+  if (execve(EXECUTABLE, argv + args_offset, environ) < 0) {
+    perror("execve");
     return -1;
   }
 
